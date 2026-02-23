@@ -1,0 +1,78 @@
+regime_switching:
+  n_regimes: 4  # JUSTIFIED: Peace/Tension/Conflict/War
+  em_max_iter: 500
+  em_tol: 1.0e-6
+  transition_prior: "dirichlet"
+  dirichlet_alpha: 1.0
+
+extreme_value:
+  method: "pot"  # Peak over threshold
+  threshold_quantile: 0.95
+  tail_distribution: "gpd"
+  block_size: 21  # JUSTIFIED: ~1 trading month for block maxima
+  min_exceedances: 50
+
+garch:
+  default_model: "egarch"
+  p: 1
+  q: 1
+  distribution: "skewt"
+  vol_targeting: true
+
+copula:
+  family: "time_varying_clayton"
+  marginals: "empirical"
+  n_bootstrap: 1000
+
+var_svar:
+  max_lags: 12
+  information_criterion: "bic"
+  identification: "sign_restrictions"
+
+bvar:
+  prior: "minnesota"
+  lambda_1: 0.1  # JUSTIFIED: tight own-lag prior
+  lambda_2: 0.5  # JUSTIFIED: moderate cross-variable shrinkage
+  lambda_3: 1.0  # JUSTIFIED: lag decay
+  n_mcmc: 5000
+  n_burnin: 2000
+
+gradient_boost:
+  xgboost:
+    max_depth: 6
+    learning_rate: 0.05
+    n_estimators: 1000
+    early_stopping_rounds: 50
+    subsample: 0.8
+    colsample_bytree: 0.8
+  lightgbm:
+    num_leaves: 63
+    learning_rate: 0.05
+    n_estimators: 1000
+    min_child_samples: 20
+
+temporal_fusion:
+  hidden_size: 64
+  attention_heads: 4
+  dropout: 0.1
+  learning_rate: 0.001
+  max_epochs: 100
+  batch_size: 64
+
+hawkes:
+  kernel: "exponential"
+  baseline_intensity: 0.1
+  alpha: 0.5  # JUSTIFIED: self-excitation parameter
+  beta: 1.0  # JUSTIFIED: decay rate
+
+monte_carlo:
+  n_simulations: 10000
+  n_timesteps: 63  # JUSTIFIED: ~3 months of trading days
+  dt: 1.0  # daily
+  antithetic: true
+  variance_reduction: "antithetic_and_control_variate"
+
+conformal:
+  method: "adaptive_ci"
+  alpha: 0.10  # JUSTIFIED: 90% coverage target
+  calibration_fraction: 0.2

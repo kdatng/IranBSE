@@ -1,0 +1,89 @@
+data_sources:
+  # --- Free / Open Source ---
+  commodity_prices:
+    provider: "yfinance"
+    symbols:
+      oil_wti: "CL=F"
+      oil_brent: "BZ=F"
+      wheat_cbot: "ZW=F"
+      gold: "GC=F"
+      natgas: "NG=F"
+      copper: "HG=F"
+    start_date: "2000-01-01"
+    frequency: "daily"
+
+  equity_indices:
+    provider: "yfinance"
+    symbols:
+      sp500: "^GSPC"
+      vix: "^VIX"
+      ovx: "^OVX"
+      defense_etf: "ITA"
+      oil_etf: "USO"
+    start_date: "2005-01-01"
+    frequency: "daily"
+
+  macro_indicators:
+    provider: "fred"
+    series:
+      fed_funds: "FEDFUNDS"
+      us_10y: "DGS10"
+      us_2y: "DGS2"
+      dollar_index: "DTWEXBGS"
+      breakeven_5y: "T5YIE"
+      wti_spot: "DCOILWTICO"
+      brent_spot: "DCOILBRENTEU"
+      cpi_yoy: "CPIAUCSL"
+    start_date: "2000-01-01"
+
+  eia_petroleum:
+    provider: "eia_api"
+    series:
+      weekly_crude_inventory: "PET.WCESTUS1.W"
+      crude_imports: "PET.WCRIMUS2.W"
+      refinery_utilization: "PET.WPULEUS3.W"
+      spr_stocks: "PET.WCSSTUS1.W"
+    start_date: "2000-01-01"
+
+  usda_wheat:
+    provider: "usda_api"
+    reports:
+      - "WASDE"
+      - "Crop Progress"
+      - "World Agricultural Supply and Demand"
+    frequency: "monthly"
+
+  geopolitical_events:
+    provider: "acled"
+    regions: ["Middle East", "North Africa", "Central Asia"]
+    event_types: ["battles", "explosions", "strategic_developments"]
+    start_date: "2015-01-01"
+
+  cftc_cot:
+    provider: "cftc"
+    reports:
+      - commodity: "Crude Oil"
+        code: "067651"
+      - commodity: "Wheat"
+        code: "001602"
+    frequency: "weekly"
+
+  weather_climate:
+    provider: "noaa"
+    variables: ["enso_index", "soil_moisture", "precipitation_anomaly"]
+    regions: ["black_sea", "mena", "us_plains"]
+
+  satellite_vegetation:
+    provider: "nasa_modis"
+    product: "MOD13A2"  # 16-day NDVI
+    regions: ["ukraine_wheat_belt", "russia_wheat_belt", "iran_wheat_belt"]
+
+  # --- Premium (optional) ---
+  tanker_tracking:
+    provider: "kpler"
+    enabled: false
+    endpoints: ["vessel_flows", "floating_storage"]
+
+  terminal_data:
+    provider: "refinitiv"
+    enabled: false
