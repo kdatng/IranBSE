@@ -106,10 +106,10 @@ class HormuzModel:
         min_days = self.mine_clearing_weeks[0] * 7
         max_days = self.mine_clearing_weeks[1] * 7
 
-        return (
-            max(optimistic, min_days),
-            min(pessimistic, max_days),
-        )
+        clamped_optimistic = max(optimistic, min_days)
+        clamped_pessimistic = max(min(pessimistic, max_days), clamped_optimistic)
+
+        return (clamped_optimistic, clamped_pessimistic)
 
     def compute_supply_disruption(
         self,
@@ -531,6 +531,22 @@ class TestDisruptionTimeline:
 # Property-based tests
 # ---------------------------------------------------------------------------
 
+def _make_default_hormuz_model() -> HormuzModel:
+    """Create a HormuzModel with default config for property-based tests."""
+    return HormuzModel({
+        "daily_flow_mbpd": 20.0,
+        "bypass_pipeline_capacity_mbpd": 4.2,
+        "bypass_coverage_pct": 0.21,
+        "mine_inventory": [5000, 6000],
+        "mine_laying_rate_per_day": 100,
+        "mine_clearing_duration_weeks": [8, 26],
+        "war_risk_premium_baseline_pct": 0.07,
+        "war_risk_premium_peak_pct": 1.0,
+        "freight_rate_surge_pct": 30,
+        "cape_of_good_hope_extra_days": [10, 14],
+    })
+
+
 class TestPropertyBased:
     """Property-based tests for Hormuz model invariants."""
 
@@ -539,9 +555,10 @@ class TestPropertyBased:
     )
     @settings(max_examples=30, deadline=5000)
     def test_net_loss_never_exceeds_total_flow(
-        self, closure_fraction: float, model: HormuzModel
+        self, closure_fraction: float
     ) -> None:
         """Net loss can never exceed the total Hormuz flow."""
+        model = _make_default_hormuz_model()
         result = model.compute_supply_disruption(closure_fraction)
         assert result["net_lost_mbpd"] <= model.daily_flow_mbpd + 1e-10
         assert result["net_lost_mbpd"] >= -1e-10
@@ -551,9 +568,10 @@ class TestPropertyBased:
     )
     @settings(max_examples=30, deadline=5000)
     def test_bypass_never_exceeds_disrupted(
-        self, closure_fraction: float, model: HormuzModel
+        self, closure_fraction: float
     ) -> None:
         """Bypassed volume cannot exceed disrupted volume."""
+        model = _make_default_hormuz_model()
         result = model.compute_supply_disruption(closure_fraction)
         assert result["bypassed_mbpd"] <= result["disrupted_mbpd"] + 1e-10
 
@@ -562,9 +580,10 @@ class TestPropertyBased:
     )
     @settings(max_examples=20, deadline=5000)
     def test_mine_density_never_negative(
-        self, days: int, model: HormuzModel
+        self, days: int
     ) -> None:
         """Mine density is always non-negative."""
+        model = _make_default_hormuz_model()
         density = model.compute_mine_density(days)
         assert density >= 0
 
@@ -574,8 +593,9 @@ class TestPropertyBased:
     )
     @settings(max_examples=20, deadline=5000)
     def test_insurance_premium_non_negative(
-        self, mine_density: int, active: bool, model: HormuzModel
+        self, mine_density: int, active: bool
     ) -> None:
         """Insurance premium is always non-negative."""
+        model = _make_default_hormuz_model()
         response = model.compute_insurance_response(mine_density, active)
         assert response["war_risk_premium_pct"] >= 0

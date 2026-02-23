@@ -346,6 +346,7 @@ class TestMissingDataHandling:
         sample_price_data: pl.DataFrame,
     ) -> None:
         """FetchResult correctly summarizes a successful fetch."""
+        pytest.importorskip("pandas", reason="pandas required for _build_fetch_result")
         fetcher = MockCommodityFetcher(fetcher_config)
         result = fetcher._build_fetch_result(sample_price_data, elapsed=1.23)
 

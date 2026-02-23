@@ -516,6 +516,43 @@ class TestProbabilityWeightedResults:
 # Property-based tests
 # ---------------------------------------------------------------------------
 
+def _make_default_scenario_config() -> dict[str, Any]:
+    """Create a scenario config for property-based tests (avoids fixture issues)."""
+    return {
+        "escalation_levels": [
+            {
+                "level": 1, "name": "L1", "probability": 0.45,
+                "oil_supply_disruption_pct": [2, 8],
+                "hormuz_closure_probability": 0.15,
+                "wheat_trade_disruption_pct": [0, 3],
+            },
+            {
+                "level": 2, "name": "L2", "probability": 0.35,
+                "oil_supply_disruption_pct": [8, 20],
+                "hormuz_closure_probability": 0.55,
+                "wheat_trade_disruption_pct": [3, 10],
+            },
+            {
+                "level": 3, "name": "L3", "probability": 0.15,
+                "oil_supply_disruption_pct": [20, 40],
+                "hormuz_closure_probability": 0.85,
+                "wheat_trade_disruption_pct": [10, 25],
+            },
+            {
+                "level": 4, "name": "L4", "probability": 0.05,
+                "oil_supply_disruption_pct": [40, 60],
+                "hormuz_closure_probability": 0.95,
+                "wheat_trade_disruption_pct": [25, 50],
+            },
+        ],
+        "historical_analogs": [
+            {"event": "Gulf War I", "oil_peak_pct_change": 140, "wheat_peak_pct_change": 15, "duration_to_peak_days": 60},
+            {"event": "Iraq War", "oil_peak_pct_change": 37, "wheat_peak_pct_change": 8, "duration_to_peak_days": 14},
+            {"event": "Soleimani", "oil_peak_pct_change": 4, "wheat_peak_pct_change": 1, "duration_to_peak_days": 1},
+        ],
+    }
+
+
 class TestPropertyBased:
     """Property-based tests for scenario engine invariants."""
 
@@ -530,10 +567,10 @@ class TestPropertyBased:
         n_sims: int,
         n_steps: int,
         level: int,
-        scenario_config: dict[str, Any],
     ) -> None:
         """Output shape matches requested (n_sims, n_steps) for any valid input."""
-        engine = ScenarioEngine(scenario_config, seed=42)
+        config = _make_default_scenario_config()
+        engine = ScenarioEngine(config, seed=42)
         result = engine.run_monte_carlo(level, n_simulations=n_sims, n_timesteps=n_steps)
 
         assert result["oil_paths"].shape == (n_sims, n_steps)
@@ -548,11 +585,11 @@ class TestPropertyBased:
         self,
         oil_pct: float,
         wheat_pct: float,
-        scenario_config: dict[str, Any],
     ) -> None:
         """Analog matching always returns a valid analog or None."""
         assume(np.isfinite(oil_pct) and np.isfinite(wheat_pct))
-        engine = ScenarioEngine(scenario_config, seed=42)
+        config = _make_default_scenario_config()
+        engine = ScenarioEngine(config, seed=42)
         result = engine.match_historical_analog(oil_pct, wheat_pct)
 
         if result is not None:
