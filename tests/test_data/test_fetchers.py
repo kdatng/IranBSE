@@ -130,7 +130,7 @@ def fetcher_config(tmp_path: Path) -> FetcherConfig:
         cache_dir=tmp_path / "cache",
         cache_ttl_seconds=3600,
         max_retries=3,
-        retry_delay_seconds=0.01,  # Fast retries for testing
+        retry_delay_seconds=0.1,  # Minimum allowed by FetcherConfig validator
         timeout_seconds=5.0,
     )
 
