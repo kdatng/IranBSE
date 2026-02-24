@@ -1,0 +1,95 @@
+==============================================================================
+  WHEAT FUTURES 1-MONTH FORECAST: US-IRAN WAR vs NO-WAR
+  Model: EGARCH(1,1) + Monte Carlo Contagion (10,000 paths)
+  Base Price: $576.75/bu (CBOT ZW=F)
+  Forecast Period: 2026-03-15 to +22 trading days
+==============================================================================
+
+--- WAR SCENARIO ---
+  Description: US-Iran war escalates through multiple levels (Limited Strikes
+  -> Extended Air Campaign -> potential Full Theater Conflict).
+  Hormuz closure risk, proxy warfare (Houthis, Hezbollah),
+  oil->wheat contagion via fertilizer/freight channels.
+
+  Point Forecast (mean):   $810.79/bu  (+40.6%)
+  Median Forecast:         $809.63/bu  (+40.4%)
+  Standard Deviation:      $155.84/bu
+
+  Percentile Distribution:
+  --------------------------------------------------
+    P01: $ 522.66/bu  (-9.4%)  ####
+    P05: $ 574.52/bu  (-0.4%)  #
+    P10: $ 608.32/bu  (+5.5%)  ##
+    P25: $ 678.23/bu  (+17.6%)  ########
+    P50: $ 809.63/bu  (+40.4%)  ####################
+    P75: $ 934.24/bu  (+62.0%)  ##############################
+    P90: $1014.84/bu  (+76.0%)  #####################################
+    P95: $1059.33/bu  (+83.7%)  #########################################
+    P99: $1144.05/bu  (+98.4%)  #################################################
+
+  Probability of >10% rise:  84.4%
+  Probability of >20% rise:  72.2%
+  Probability of >50% rise:  38.7%
+  Probability of decline:    5.3%
+
+--- NO-WAR SCENARIO (Limited Strikes) ---
+  Description: Limited, targeted strikes on Iranian nuclear/military sites.
+  Trump loses interest within 3-5 days. Quick de-escalation.
+  Minimal Hormuz disruption. Markets briefly spike then revert.
+
+  Point Forecast (mean):   $577.44/bu  (+0.1%)
+  Median Forecast:         $575.47/bu  (-0.2%)
+  Standard Deviation:      $51.15/bu
+
+  Percentile Distribution:
+  --------------------------------------------------
+    P01: $ 458.80/bu  (-20.5%)  ##########
+    P05: $ 497.80/bu  (-13.7%)  ######
+    P10: $ 516.56/bu  (-10.4%)  #####
+    P25: $ 544.11/bu  (-5.7%)  ##
+    P50: $ 575.47/bu  (-0.2%)  #
+    P75: $ 608.36/bu  (+5.5%)  ##
+    P90: $ 641.87/bu  (+11.3%)  #####
+    P95: $ 662.90/bu  (+14.9%)  #######
+    P99: $ 713.38/bu  (+23.7%)  ###########
+
+  Probability of >10% rise:  12.2%
+  Probability of >20% rise:  2.0%
+  Probability of >50% rise:  0.0%
+  Probability of decline:    50.9%
+
+--- SCENARIO COMPARISON ---
+  War premium (mean):      +40.5% ($+233.35/bu)
+  War P95 vs No-War P95:   $1059.33 vs $662.90
+  War P99 (tail risk):     $1144.05/bu (+98.4%)
+
+--- HISTORICAL ANALOG CONTEXT ---
+  Russia-Ukraine 2022            + 70%  -> $980/bu  (peaked in 21 days)
+  Gulf War I 1990                + 15%  -> $663/bu  (peaked in 60 days)
+  Iraq War 2003                  +  8%  -> $623/bu  (peaked in 14 days)
+  Iran-Iraq War 1980             + 10%  -> $634/bu  (peaked in 90 days)
+  June 2025 Israel-Iran          +  5%  -> $606/bu  (peaked in 7 days)
+  Houthi Red Sea 2023-25         +  3%  -> $594/bu  (peaked in 90 days)
+  Soleimani Strike 2020          +  1%  -> $583/bu  (peaked in 1 days)
+
+--- KEY RISK FACTORS ---
+  1. Strait of Hormuz: 20 mb/d oil flow; only 21% bypass capacity
+     - Iran has 5,000-6,000 naval mines, 100/day laying rate
+     - US MCM gap: Avenger class decommissioned, LCS replacement unproven
+     - Insurance halt at ~0.5% war-risk premium (Red Sea precedent)
+  2. Oil->Wheat Transmission: 0.12 historical 1-month elasticity
+     - Calibrated from Gulf War I (0.107), Iraq War (0.216), Jun 2025 (0.278)
+     - Plus direct wheat trade disruption from config per level
+  3. Proxy Amplification: Houthis + Hezbollah = 1.2x multiplier
+     - Red Sea already saw 70% traffic decline, 58% Suez drop
+  4. Wheat Fundamentals: Global stocks-to-use ratio near 5-year lows
+     - Black Sea corridor uncertainty persists
+     - Iran itself imports ~7M tonnes/year of wheat
+
+--- METHODOLOGY ---
+  Base volatility: EGARCH(1,1) with skewed-t innovations
+  Contagion: 3-channel oil->wheat (direct + fertiliser + freight)
+  Escalation: 4-level Markov chain with Hawkes self-excitation
+  Simulation: 10,000 Monte Carlo paths, antithetic variance reduction
+  Data: CBOT wheat futures (ZW=F) via yfinance, 5-year history
+==============================================================================
