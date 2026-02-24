@@ -32,8 +32,11 @@ scenario:
       probability: 0.15
       oil_supply_disruption_pct: [20, 40]
       hormuz_closure_probability: 0.85
-      wheat_trade_disruption_pct: [10, 25]
-      oil_price_range_bbl: [150, 250]
+      wheat_trade_disruption_pct: [5, 15]
+      oil_price_range_bbl: [130, 175]
+      # JUSTIFIED: Gulf War I peak was +119% from base ($21->$46). From $70
+      # base, equivalent shock = $153. Modern SPR releases and demand
+      # destruction cap upside vs historical. $175 is a generous ceiling.
 
     - level: 4
       name: "Global Escalation"
@@ -41,8 +44,11 @@ scenario:
       probability: 0.05
       oil_supply_disruption_pct: [40, 60]
       hormuz_closure_probability: 0.95
-      wheat_trade_disruption_pct: [25, 50]
-      oil_price_range_bbl: [200, 300]
+      wheat_trade_disruption_pct: [10, 25]
+      oil_price_range_bbl: [150, 200]
+      # JUSTIFIED: $200/bbl is the extreme tail. Even full Hormuz closure
+      # with SPR releases (~1.2M bbl/day for 6 months) and demand destruction
+      # caps realistic peak. Previous $200-300 had no historical precedent.
 
   # --- RESEARCH-BACKED PARAMETERS ---
 
