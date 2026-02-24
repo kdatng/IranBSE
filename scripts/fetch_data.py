@@ -241,7 +241,7 @@ def _fetch_fred(
         status.error_message = f"Missing dependency: {exc}"
         return status
 
-    api_key = os.environ.get("FRED_API_KEY")
+    api_key = os.environ.get("FRED_API_KEY", "1a72200a7cdeee8aa47553f0ac2a0f29")
     if not api_key:
         status.status = "error"
         status.error_message = (
@@ -311,6 +311,147 @@ def _fetch_fred(
     return status
 
 
+def _fetch_eia(
+    source_name: str,
+    source_cfg: dict[str, Any],
+    output_dir: Path,
+    max_retries: int = 3,
+) -> FetchStatus:
+    """Fetch petroleum data from the EIA API v2.
+
+    Uses the ``/v2/seriesid/{series_id}`` endpoint which accepts the legacy
+    dotted series IDs (e.g. ``PET.WCESTUS1.W``).
+
+    Args:
+        source_name: Logical name (e.g. ``"eia_petroleum"``).
+        source_cfg: Provider-specific config including series mappings.
+        output_dir: Directory to save parquet files.
+        max_retries: Maximum retry attempts per series.
+
+    Returns:
+        FetchStatus with outcome details.
+    """
+    import os
+
+    status = FetchStatus(source_name=source_name, provider="eia_api")
+    series_map = source_cfg.get("series", {})
+    start_date = source_cfg.get("start_date", "2000-01-01")
+
+    api_key = os.environ.get("EIA_API_KEY", "WSRVns7B8xiyTaxp6ynP8pZDs7Z3cLHrxEpajpuc")
+    if not api_key:
+        status.status = "error"
+        status.error_message = "EIA_API_KEY not set."
+        return status
+
+    try:
+        import requests
+        import polars as pl
+    except ImportError as exc:
+        status.status = "error"
+        status.error_message = f"Missing dependency: {exc}"
+        return status
+
+    t0 = time.monotonic()
+    all_frames: list = []
+
+    for label, series_id in series_map.items():
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.debug(
+                    "Fetching EIA series {} ({}) attempt {}/{}",
+                    label, series_id, attempt, max_retries,
+                )
+                url = f"https://api.eia.gov/v2/seriesid/{series_id}"
+                params = {
+                    "api_key": api_key,
+                    "out": "json",
+                    "start": start_date,
+                }
+                resp = requests.get(url, params=params, timeout=30)
+                resp.raise_for_status()
+                payload = resp.json()
+
+                # EIA v2 seriesid endpoint returns data under
+                # response.data as a list of {period, value} dicts.
+                data_list = (
+                    payload.get("response", {}).get("data", [])
+                )
+                if not data_list:
+                    status.warnings.append(
+                        f"Empty EIA series: {label} ({series_id})"
+                    )
+                    break
+
+                dates = []
+                values = []
+                for row in data_list:
+                    period = row.get("period")
+                    value = row.get("value")
+                    if period is None or value is None:
+                        continue
+                    try:
+                        values.append(float(value))
+                        dates.append(period)
+                    except (ValueError, TypeError):
+                        continue
+
+                if not dates:
+                    status.warnings.append(
+                        f"No parseable rows for EIA {label} ({series_id})"
+                    )
+                    break
+
+                df = pl.DataFrame({"date": dates, label: values})
+                # Period strings may be "YYYY-MM-DD" (weekly) or "YYYY-MM"
+                # (monthly).  Normalise to Date.
+                df = df.with_columns(
+                    pl.col("date").str.to_date(strict=False)
+                )
+                # Drop any rows where date parsing failed.
+                df = df.drop_nulls(subset=["date"])
+
+                all_frames.append(df)
+                logger.debug("Fetched {} rows for EIA {}", len(df), label)
+                break  # success
+
+            except Exception as exc:
+                delay = 2.0 ** (attempt - 1)
+                logger.warning(
+                    "EIA error for {} attempt {}: {}. Retrying in {:.1f}s",
+                    label, attempt, exc, delay,
+                )
+                time.sleep(delay)
+                if attempt == max_retries:
+                    status.warnings.append(
+                        f"Failed to fetch EIA {label} after {max_retries} attempts: {exc}"
+                    )
+
+    if all_frames:
+        try:
+            combined = all_frames[0]
+            for frame in all_frames[1:]:
+                combined = combined.join(frame, on="date", how="outer_coalesce")
+            combined = combined.sort("date")
+
+            output_path = output_dir / f"{source_name}.parquet"
+            combined.write_parquet(output_path)
+            status.row_count = len(combined)
+            status.status = "success"
+            logger.info(
+                "Saved {} rows for {} -> {}",
+                len(combined), source_name, output_path,
+            )
+        except Exception as exc:
+            status.status = "error"
+            status.error_message = f"Failed to combine/save: {exc}"
+    else:
+        status.status = "error"
+        status.error_message = "No EIA data frames produced"
+
+    status.elapsed_seconds = round(time.monotonic() - t0, 2)
+    return status
+
+
 def _fetch_placeholder(
     source_name: str,
     source_cfg: dict[str, Any],
@@ -342,6 +483,7 @@ def _fetch_placeholder(
 _PROVIDER_DISPATCH: dict[str, Any] = {
     "yfinance": _fetch_yfinance,
     "fred": _fetch_fred,
+    "eia_api": _fetch_eia,
 }
 
 
