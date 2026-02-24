@@ -34,6 +34,7 @@ tigramite>=5.2
 yfinance>=0.2
 fredapi>=0.5
 requests>=2.31
+lseg-data>=2.0
 
 # Visualization
 plotly>=5.18

@@ -452,6 +452,334 @@ def _fetch_eia(
     return status
 
 
+# ---------------------------------------------------------------------------
+# LSEG / Refinitiv fetcher
+# ---------------------------------------------------------------------------
+
+# Shared session state — opened once, reused across all LSEG sources.
+_lseg_session_open: bool = False
+
+
+def _open_lseg_session(app_key: str, session_type: str) -> None:
+    """Open an LSEG Data Library session if not already active.
+
+    Writes ``lseg-data.config.json`` beside this script's project root
+    and calls ``ld.open_session()``.
+
+    Args:
+        app_key: LSEG / Eikon App Key.
+        session_type: ``"desktop"`` (Workspace running) or ``"platform"``.
+    """
+    global _lseg_session_open
+    if _lseg_session_open:
+        return
+
+    import json as _json
+
+    import lseg.data as ld
+
+    config_path = PROJECT_ROOT / "lseg-data.config.json"
+    if session_type == "platform":
+        default_session = "platform.ldp"
+    else:
+        default_session = "desktop.workspace"
+
+    cfg = {
+        "sessions": {
+            "default": default_session,
+            "desktop": {"workspace": {"app-key": app_key}},
+            "platform": {"ldp": {"app-key": app_key}},
+        }
+    }
+    with open(config_path, "w", encoding="utf-8") as fh:
+        _json.dump(cfg, fh, indent=2)
+
+    ld.open_session()
+    _lseg_session_open = True
+    logger.info("LSEG session opened (type={})", session_type)
+
+
+def _close_lseg_session() -> None:
+    """Close the LSEG session if it is open."""
+    global _lseg_session_open
+    if not _lseg_session_open:
+        return
+    try:
+        import lseg.data as ld
+
+        ld.close_session()
+    except Exception:
+        pass
+    _lseg_session_open = False
+
+
+def _lseg_resolve_app_key(source_cfg: dict[str, Any]) -> str | None:
+    """Resolve the LSEG App Key from env var or config.
+
+    Precedence: ``LSEG_APP_KEY`` env var > ``app_key`` field in
+    data_sources.yaml.
+    """
+    import os
+
+    key = os.environ.get("LSEG_APP_KEY", "") or source_cfg.get("app_key", "")
+    return key or None
+
+
+def _lseg_fetch_timeseries(
+    source_cfg: dict[str, Any],
+) -> list[tuple[str, Any]]:
+    """Fetch daily time-series for a set of RICs.
+
+    Returns:
+        List of ``(label, pandas.DataFrame)`` pairs.
+    """
+    import lseg.data as ld
+
+    rics = source_cfg.get("rics", {})
+    fields = source_cfg.get("fields", ["TRDPRC_1"])
+    interval = source_cfg.get("interval", "daily")
+    start = source_cfg.get("start_date", "2015-01-01")
+
+    results: list[tuple[str, Any]] = []
+    for label, ric in rics.items():
+        logger.debug("LSEG get_history: {} ({})", label, ric)
+        try:
+            df = ld.get_history(
+                universe=ric,
+                fields=fields,
+                interval=interval,
+                start=start,
+            )
+            if df is not None and not df.empty:
+                results.append((label, df))
+                logger.debug("  -> {} rows", len(df))
+            else:
+                logger.warning("  -> empty result for {}", ric)
+        except Exception as exc:
+            logger.warning("  -> error for {}: {}", ric, exc)
+    return results
+
+
+def _lseg_fetch_snapshot(
+    source_cfg: dict[str, Any],
+    ric_key: str = "chain_rics",
+) -> list[tuple[str, Any]]:
+    """Fetch point-in-time snapshot data (curves, options chains).
+
+    Args:
+        source_cfg: Source configuration block.
+        ric_key: Key in config holding the RIC mapping (default
+            ``"chain_rics"``).
+
+    Returns:
+        List of ``(label, pandas.DataFrame)`` pairs.
+    """
+    import lseg.data as ld
+
+    chain_rics = source_cfg.get(ric_key, {})
+    fields = source_cfg.get("fields", [])
+
+    results: list[tuple[str, Any]] = []
+    for label, ric in chain_rics.items():
+        logger.debug("LSEG get_data: {} ({})", label, ric)
+        try:
+            # fields is mandatory in lseg-data v2
+            df = ld.get_data(universe=ric, fields=fields)
+            if df is not None and not df.empty:
+                results.append((label, df))
+                logger.debug("  -> {} rows", len(df))
+            else:
+                logger.warning("  -> empty result for {}", ric)
+        except Exception as exc:
+            logger.warning("  -> error for {}: {}", ric, exc)
+    return results
+
+
+def _lseg_fetch_news(source_cfg: dict[str, Any]) -> list[tuple[str, Any]]:
+    """Fetch news headlines for configured queries.
+
+    Returns:
+        List of ``(query_label, pandas.DataFrame)`` pairs.
+    """
+    import lseg.data as ld
+
+    queries = source_cfg.get("queries", [])
+    count = source_cfg.get("count_per_query", 100)
+
+    results: list[tuple[str, Any]] = []
+    for i, query in enumerate(queries):
+        label = f"news_q{i}"
+        logger.debug("LSEG get_news_headlines: '{}'", query)
+        try:
+            df = ld.get_news_headlines(query=query, count=count)
+            if df is not None and not df.empty:
+                results.append((label, df))
+                logger.debug("  -> {} headlines", len(df))
+            else:
+                logger.warning("  -> no headlines for '{}'", query)
+        except Exception as exc:
+            logger.warning("  -> error for '{}': {}", query, exc)
+    return results
+
+
+def _fetch_lseg(
+    source_name: str,
+    source_cfg: dict[str, Any],
+    output_dir: Path,
+    max_retries: int = 3,
+) -> FetchStatus:
+    """Fetch data from LSEG via the ``lseg-data`` library.
+
+    Supports multiple dataset types controlled by the ``dataset_type``
+    key in the source config:
+
+    - ``timeseries``: Daily OHLCV via ``get_history`` (freight indices, etc.)
+    - ``futures_curve``: Term structure snapshots via ``get_data``
+    - ``options``: Options chains with IV/Greeks via ``get_data``
+    - ``news``: News headlines via ``get_news_headlines``
+
+    Requires either LSEG Workspace running locally (desktop session) or
+    platform credentials.  Set ``LSEG_APP_KEY`` env var or ``app_key``
+    in data_sources.yaml.
+
+    Args:
+        source_name: Logical name from data_sources.yaml.
+        source_cfg: Provider-specific config block.
+        output_dir: Directory to write parquet output.
+        max_retries: Maximum retry attempts.
+
+    Returns:
+        FetchStatus with outcome details.
+    """
+    status = FetchStatus(source_name=source_name, provider="lseg")
+    dataset_type = source_cfg.get("dataset_type", "timeseries")
+
+    # --- Resolve App Key ---
+    app_key = _lseg_resolve_app_key(source_cfg)
+    if not app_key:
+        status.status = "error"
+        status.error_message = (
+            "No LSEG App Key found. Set the LSEG_APP_KEY environment "
+            "variable or add app_key to data_sources.yaml. Generate a "
+            "key by typing APPKEY in LSEG Workspace."
+        )
+        return status
+
+    # --- Import check ---
+    try:
+        import lseg.data  # noqa: F401
+        import polars as pl
+    except ImportError as exc:
+        status.status = "error"
+        status.error_message = (
+            f"Missing dependency: {exc}. Install with: pip install lseg-data"
+        )
+        return status
+
+    t0 = time.monotonic()
+
+    # --- Open session (shared across all LSEG sources) ---
+    session_type = source_cfg.get("session_type", "desktop")
+    for attempt in range(1, max_retries + 1):
+        try:
+            _open_lseg_session(app_key, session_type)
+            break
+        except Exception as exc:
+            delay = 2.0 ** (attempt - 1)
+            logger.warning(
+                "LSEG session open attempt {}/{} failed: {}. "
+                "Retrying in {:.1f}s",
+                attempt, max_retries, exc, delay,
+            )
+            if attempt == max_retries:
+                status.status = "error"
+                status.error_message = (
+                    f"Failed to open LSEG session after {max_retries} "
+                    f"attempts: {exc}"
+                )
+                status.elapsed_seconds = round(time.monotonic() - t0, 2)
+                return status
+            time.sleep(delay)
+
+    # --- Fetch based on dataset type ---
+    pairs: list[tuple[str, Any]] = []
+    try:
+        if dataset_type == "timeseries":
+            pairs = _lseg_fetch_timeseries(source_cfg)
+        elif dataset_type in ("futures_curve", "options"):
+            pairs = _lseg_fetch_snapshot(source_cfg)
+        elif dataset_type == "news":
+            pairs = _lseg_fetch_news(source_cfg)
+        else:
+            status.status = "error"
+            status.error_message = f"Unknown LSEG dataset_type: {dataset_type}"
+            status.elapsed_seconds = round(time.monotonic() - t0, 2)
+            return status
+    except Exception as exc:
+        status.status = "error"
+        status.error_message = f"LSEG fetch error: {exc}"
+        status.elapsed_seconds = round(time.monotonic() - t0, 2)
+        return status
+
+    if not pairs:
+        status.status = "error"
+        status.error_message = "No LSEG data frames produced"
+        status.elapsed_seconds = round(time.monotonic() - t0, 2)
+        return status
+
+    # --- Convert pandas -> polars, combine, save ---
+    try:
+        import polars as pl
+
+        polars_frames: list[pl.DataFrame] = []
+        for label, pdf in pairs:
+            # pandas DataFrames from LSEG have the index as dates.
+            pdf_reset = pdf.reset_index()
+            plf = pl.from_pandas(pdf_reset)
+
+            # Normalise the date column name.
+            date_col = None
+            for candidate in ("Date", "date", "Timestamp", "timestamp"):
+                if candidate in plf.columns:
+                    date_col = candidate
+                    break
+            if date_col and date_col != "date":
+                plf = plf.rename({date_col: "date"})
+
+            # Prefix non-date columns with the label.
+            for col in plf.columns:
+                if col != "date":
+                    plf = plf.rename({col: f"{label}_{col}"})
+
+            polars_frames.append(plf)
+
+        if dataset_type == "news":
+            # News frames have different schemas — just concatenate.
+            combined = pl.concat(polars_frames, how="diagonal_relaxed")
+        else:
+            combined = polars_frames[0]
+            for frame in polars_frames[1:]:
+                combined = combined.join(
+                    frame, on="date", how="outer_coalesce",
+                )
+            combined = combined.sort("date")
+
+        output_path = output_dir / f"{source_name}.parquet"
+        combined.write_parquet(output_path)
+        status.row_count = len(combined)
+        status.status = "success"
+        logger.info(
+            "Saved {} rows for {} -> {}",
+            len(combined), source_name, output_path,
+        )
+    except Exception as exc:
+        status.status = "error"
+        status.error_message = f"Failed to combine/save: {exc}"
+
+    status.elapsed_seconds = round(time.monotonic() - t0, 2)
+    return status
+
+
 def _fetch_placeholder(
     source_name: str,
     source_cfg: dict[str, Any],
@@ -484,6 +812,7 @@ _PROVIDER_DISPATCH: dict[str, Any] = {
     "yfinance": _fetch_yfinance,
     "fred": _fetch_fred,
     "eia_api": _fetch_eia,
+    "lseg": _fetch_lseg,
 }
 
 
@@ -730,6 +1059,9 @@ def main(argv: list[str] | None = None) -> int:
             parquet_path = args.output_dir / f"{source_name}.parquet"
             validation_warnings = validate_parquet(parquet_path)
             status.warnings.extend(validation_warnings)
+
+    # Clean up LSEG session if it was opened.
+    _close_lseg_session()
 
     print_summary(statuses)
 

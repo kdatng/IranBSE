@@ -78,12 +78,66 @@ data_sources:
     product: "MOD13A2"  # 16-day NDVI
     regions: ["ukraine_wheat_belt", "russia_wheat_belt", "iran_wheat_belt"]
 
-  # --- Premium (optional) ---
+  # --- LSEG / Refinitiv (requires Workspace Desktop or Platform credentials) ---
+  # Set LSEG_APP_KEY env var, or paste your App Key into app_key below.
+  # session_type: "desktop" requires Workspace running on same machine;
+  #               "platform" requires client_id + client_secret for headless access.
+
+  lseg_futures_curve:
+    provider: "lseg"
+    app_key: ""
+    session_type: "desktop"
+    dataset_type: "futures_curve"
+    # Full term structure snapshots — feeds contango/backwardation alpha signal.
+    chain_rics:
+      oil_wti_curve: "0#CL:"
+      oil_brent_curve: "0#LCO:"
+      wheat_curve: "0#W:"
+    fields: ["CF_LAST", "EXPIR_DATE", "CF_DATE", "OPEN_PRC", "HIGH_1", "LOW_1"]
+
+  lseg_options:
+    provider: "lseg"
+    app_key: ""
+    session_type: "desktop"
+    dataset_type: "options"
+    # Options chains with IV and Greeks — feeds volatility surface alpha signal.
+    chain_rics:
+      oil_wti_opts: "0#CLc1+"
+      oil_brent_opts: "0#LCOc1+"
+      wheat_opts: "0#Wc1+"
+    fields: ["STRIKE_PRC", "PUTCALLIND", "IMP_VOLT", "EXPIR_DATE",
+             "CF_LAST", "DELTA", "GAMMA", "THETA", "VEGA"]
+
+  lseg_freight:
+    provider: "lseg"
+    app_key: ""
+    session_type: "desktop"
+    dataset_type: "timeseries"
+    # Baltic Exchange freight indices — replaces BDI proxy in shipping.py.
+    rics:
+      baltic_dry: ".BDI"
+      baltic_dirty_tanker: ".BDTI"
+      baltic_clean_tanker: ".BCTI"
+      vlcc_td3c: "TD3C-TCE-d"
+    fields: ["TRDPRC_1", "HIGH_1", "LOW_1"]
+    interval: "daily"
+    start_date: "2015-01-01"
+
+  lseg_news:
+    provider: "lseg"
+    app_key: ""
+    session_type: "desktop"
+    dataset_type: "news"
+    # Commodity & geopolitical news headlines for sentiment analysis.
+    queries:
+      - "Crude Oil WTI OPEC Iran"
+      - "Wheat CBOT agriculture supply"
+      - "Strait Hormuz shipping tanker"
+      - "Iran military sanctions nuclear"
+    count_per_query: 100
+
+  # --- Other Premium (optional) ---
   tanker_tracking:
     provider: "kpler"
     enabled: false
     endpoints: ["vessel_flows", "floating_storage"]
-
-  terminal_data:
-    provider: "refinitiv"
-    enabled: false
