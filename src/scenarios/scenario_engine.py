@@ -510,7 +510,11 @@ class ScenarioEngine:
         Args:
             horizon: Simulation horizon for sizing calibration data.
         """
+        from datetime import date, timedelta
+
         n_rows = max(50, horizon * 2)
+        start = date(2024, 1, 1)
+        end = start + timedelta(days=n_rows - 1)
 
         # Conflict model
         assert self._conflict_model is not None
@@ -519,9 +523,7 @@ class ScenarioEngine:
             cal_data = pl.DataFrame(
                 {
                     "date": pl.date_range(
-                        pl.date(2024, 1, 1),
-                        pl.date(2024, 1, 1) + pl.duration(days=n_rows - 1),  # type: ignore[operator]
-                        eager=True,
+                        start, end, eager=True,
                     ).head(n_rows),
                     "escalation_level": rng.choice(
                         [1, 1, 1, 2, 2, 3], size=n_rows
@@ -536,9 +538,7 @@ class ScenarioEngine:
             cal_supply = pl.DataFrame(
                 {
                     "date": pl.date_range(
-                        pl.date(2024, 1, 1),
-                        pl.date(2024, 1, 1) + pl.duration(days=n_rows - 1),  # type: ignore[operator]
-                        eager=True,
+                        start, end, eager=True,
                     ).head(n_rows),
                     "supply_change_mbpd": np.random.default_rng(self._seed)
                     .uniform(-5, 0, size=n_rows)
@@ -558,9 +558,7 @@ class ScenarioEngine:
             cal_contagion = pl.DataFrame(
                 {
                     "date": pl.date_range(
-                        pl.date(2024, 1, 1),
-                        pl.date(2024, 1, 1) + pl.duration(days=n_rows - 1),  # type: ignore[operator]
-                        eager=True,
+                        start, end, eager=True,
                     ).head(n_rows),
                     "oil_return": oil_ret.tolist(),
                     "wheat_return": (oil_ret * 0.2 + rng_c.normal(0, 0.01, size=n_rows)).tolist(),

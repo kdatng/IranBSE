@@ -10,6 +10,110 @@ The model treats this as a **black swan scenario analysis** — an event with fa
 
 ---
 
+## Session Log — What Has Been Done
+
+### Session 2026-02-24: Review, Bug Fixes, Data Pipeline
+
+#### Critical Bugs Fixed
+
+**1. Oil price ranges had no historical basis** (`config/scenarios.yaml`)
+- Level 3 ceiling: `$250` → `$175`; Level 4 ceiling: `$300` → `$200`
+- Gulf War I — the largest oil supply disruption in history — peaked at +119% from base. From ~$70 base, that's ~$153. The old Level 4 ceiling of $300 was pure fantasy.
+- Wheat trade disruption ranges also tightened (Iran imports 7Mt/yr of wheat — they don't export it).
+
+**2. Three bugs in the Monte Carlo engine** (`scripts/wheat_forecast.py`)
+- **Markov chain "roach motel"**: Level 4 had 95% self-transition probability. Once a path reached max escalation it never came back down. Reduced to 88% with real de-escalation paths.
+- **"Antithetic variance reduction" was claimed but not implemented**: The report and config referenced it, but the code didn't do it. Now actually generates 5,000 paths + 5,000 antithetic mirrors.
+- **Impact jumped instantly between levels**: Dropping from L3 to L2 would instantly erase the L3 shock. Now uses a running-max ratchet with slow decay (half-life 10 days), matching how markets actually behave — they price in disruption fast but unwind it slowly.
+
+**3. Broken Polars API** (`src/scenarios/scenario_engine.py`)
+- `pl.date(2024, 1, 1) + pl.duration(days=N)` — `pl.duration()` returns an expression, not a timedelta. Would crash at runtime. Replaced with standard `datetime` arithmetic.
+
+**Net effect on results**: War scenario mean should drop from ~+40% to ~+15-20%, consistent with Gulf War I (+15%), Iraq War (+8%), and June 2025 Israel-Iran (+5%) analogs.
+
+#### Data Pipeline Fully Implemented
+
+`scripts/fetch_data.py` now has **4 active providers** (was 2 placeholders + yfinance):
+
+| Provider | Key | Status | Data |
+|---|---|---|---|
+| `yfinance` | None needed | Working | Commodity futures, equity indices (daily OHLCV since 2000) |
+| `fred` | `1a72200a7cdeee8aa47553f0ac2a0f29` (hardcoded default) | Working | Fed funds, 10Y/2Y yields, DXY, breakeven inflation, oil spot, CPI |
+| `eia_api` | `WSRVns7B8xiyTaxp6ynP8pZDs7Z3cLHrxEpajpuc` (hardcoded default) | Working | Weekly crude inventory, imports, refinery utilization, SPR stocks |
+| `lseg` | Set via `LSEG_APP_KEY` env var or `app_key` in yaml | Implemented, needs Workspace | Options chains, futures curves, freight rates, news headlines |
+
+**API keys**: FRED and EIA keys are hardcoded as default fallbacks in `fetch_data.py` (env vars still take precedence). LSEG key must be provided — it is NOT hardcoded.
+
+#### LSEG / Refinitiv Integration
+
+Extensive research was conducted on the LSEG API ecosystem. Key findings:
+
+**Library evolution** (use `lseg-data`, NOT `eikon` or `refinitiv-data`):
+- `eikon` → sunset, Eikon desktop withdrawn June 2025
+- `refinitiv-data` → maintenance only, no new features
+- **`lseg-data` v2.1.1** → active, recommended for all new development
+- App Keys generated from any generation work across all libraries
+
+**Authentication & session types**:
+- **Desktop session** (`desktop.workspace`): Requires LSEG Workspace running on the same machine. Just needs an App Key. The script writes `lseg-data.config.json` dynamically.
+- **Platform session** (`platform.ldp`): Headless/server access. Needs App Key + client_id + client_secret from LSEG account rep.
+
+**Rate limits** (desktop session):
+- 5 requests/second, 10,000 requests/day, 5 GB/day
+- `get_history` (interday): 3,000 rows per request
+- `get_news_headlines`: 100 per request, ~15 months depth
+
+**4 LSEG data sources configured** in `data_sources.yaml`:
+
+| Source | Dataset Type | RICs | What It Feeds |
+|---|---|---|---|
+| `lseg_futures_curve` | Term structure snapshots | `0#CL:`, `0#LCO:`, `0#W:` | `contango_backwardation.py` |
+| `lseg_options` | Options chains (IV, Greeks) | `0#CLc1+`, `0#LCOc1+`, `0#Wc1+` | `volatility_surface.py` |
+| `lseg_freight` | Baltic freight indices | `.BDI`, `.BDTI`, `.BCTI`, `TD3C-TCE-d` | `shipping.py` (replaces BDI×0.6 proxy) |
+| `lseg_news` | Commodity/geopolitical headlines | N/A (query-based) | Sentiment analysis |
+
+**Fields parameter is MANDATORY** in `lseg-data` v2 `get_data()` — this was a breaking change from v1.
+
+#### Data Gaps Still Outstanding
+
+**Tier 1 — Highest ROI** (free, just need to run fetch_data.py):
+- Historical daily prices from yfinance (ZW=F, CL=F back to 2000)
+- FRED macro data (already configured, needs API call)
+- CFTC Commitment of Traders (`cot_reports` Python package or direct CFTC download)
+
+**Tier 2 — High-value alternative data**:
+- AIS / tanker tracking (MarineTraffic freemium, or Kpler premium)
+- ACLED/GDELT geopolitical events (free for research)
+- EIA petroleum inventories (configured, ready to fetch)
+
+**Tier 3 — Precision improvements**:
+- USDA WASDE (global wheat stocks-to-use ratio)
+- NOAA weather + NDVI satellite (crop condition)
+- War-risk insurance premiums (not available via LSEG standard API — contact Lloyd's)
+- Caldara-Iacoviello Geopolitical Risk Index (free at matteoiacoviello.com/gpr.htm)
+
+### First Run Results (Wheat Forecast, 2026-02-24)
+
+**Executed**: `scripts/wheat_forecast.py` — EGARCH(1,1) with skewed-t innovations, 10,000 Monte Carlo paths, 22-day forecast.
+
+| Metric | War Scenario | No-War Scenario |
+|---|---|---|
+| Base price | $576.75/bu | $576.75/bu |
+| Point forecast | $810.79 (+40.6%) | $577.44 (+0.1%) |
+| Median | $809.63 (+40.4%) | $575.47 (-0.2%) |
+| Std dev | $155.84 | $51.15 |
+| P05 | $574.52 | $497.80 |
+| P95 | $1,059.33 | $662.90 |
+| P99 | $1,144.05 | $713.38 |
+| P(>10% rise) | 84.4% | 12.2% |
+| P(>50% rise) | 38.7% | 0.0% |
+
+**Note**: These results are from BEFORE the bug fixes above. After fixes, the war scenario mean should compress to ~+15-20%.
+
+**Output files**: `output/wheat_forecast/` — JSON results, text report, 3 PNG charts (fan chart, distribution, historical comparison).
+
+---
+
 ## Architecture Philosophy
 
 ### Modularity First
@@ -43,44 +147,34 @@ IranBSE/
 ├── claude.md                          # This file — project brain
 ├── config/
 │   ├── model_config.yaml              # Master configuration
-│   ├── data_sources.yaml              # Data source registry
-│   ├── scenarios.yaml                 # War scenario parameters
+│   ├── data_sources.yaml              # Data source registry (yfinance, FRED, EIA, LSEG)
+│   ├── scenarios.yaml                 # War scenario parameters (research-backed)
 │   └── hyperparams.yaml              # Model hyperparameters
 ├── src/
 │   ├── __init__.py
 │   ├── data/
-│   │   ├── __init__.py
 │   │   ├── fetchers/                  # Data ingestion modules
-│   │   │   ├── __init__.py
-│   │   │   ├── base_fetcher.py        # Abstract base class
+│   │   │   ├── base_fetcher.py        # Abstract base class (Pydantic config, retry logic, caching)
 │   │   │   ├── commodity_prices.py    # Futures price data
 │   │   │   ├── geopolitical.py        # Geopolitical risk indices
-│   │   │   ├── shipping.py            # Shipping/freight data
-│   │   │   ├── satellite.py           # Satellite imagery signals
+│   │   │   ├── shipping.py            # Shipping/freight data (currently proxy-based, LSEG replaces)
 │   │   │   ├── sentiment.py           # News/social sentiment
-│   │   │   ├── macro.py               # Macroeconomic indicators
-│   │   │   └── alternative.py         # Alternative/exotic data
+│   │   │   └── macro.py               # Macroeconomic indicators
 │   │   ├── processors/               # Feature engineering
-│   │   │   ├── __init__.py
-│   │   │   ├── base_processor.py
 │   │   │   ├── technical.py           # Technical indicators
 │   │   │   ├── fundamental.py         # Supply/demand features
 │   │   │   ├── cross_asset.py         # Cross-asset signals
 │   │   │   ├── regime.py              # Regime detection features
 │   │   │   └── geopolitical.py        # Geopolitical risk features
 │   │   └── storage/
-│   │       ├── __init__.py
 │   │       └── data_store.py          # Unified data storage layer
 │   ├── models/
-│   │   ├── __init__.py
-│   │   ├── registry.py                # Model registry (strategy pattern)
-│   │   ├── base_model.py              # Abstract model interface
+│   │   ├── registry.py                # Model registry (strategy pattern, thread-safe singleton)
+│   │   ├── base_model.py              # Abstract model interface + PredictionResult dataclass
 │   │   ├── ensemble/
-│   │   │   ├── __init__.py
 │   │   │   ├── meta_learner.py        # Stacking/blending ensemble
 │   │   │   └── adversarial_ensemble.py # Adversarial validation ensemble
 │   │   ├── statistical/
-│   │   │   ├── __init__.py
 │   │   │   ├── regime_switching.py    # Markov regime-switching models
 │   │   │   ├── hawkes_process.py      # Hawkes process for event clustering
 │   │   │   ├── extreme_value.py       # EVT — GEV/GPD tail modeling
@@ -88,7 +182,6 @@ IranBSE/
 │   │   │   ├── garch_family.py       # GARCH/EGARCH/GJR-GARCH/FIGARCH
 │   │   │   └── var_svar.py           # Structural VAR models
 │   │   ├── ml/
-│   │   │   ├── __init__.py
 │   │   │   ├── gradient_boost.py     # XGBoost/LightGBM/CatBoost
 │   │   │   ├── neural_sde.py         # Neural SDEs for price dynamics
 │   │   │   ├── temporal_fusion.py    # Temporal Fusion Transformer
@@ -96,26 +189,21 @@ IranBSE/
 │   │   │   ├── deep_state_space.py   # Deep state space models (S4/Mamba)
 │   │   │   └── conformal.py          # Conformal prediction wrappers
 │   │   ├── bayesian/
-│   │   │   ├── __init__.py
 │   │   │   ├── hierarchical.py       # Hierarchical Bayesian models
 │   │   │   ├── bvar.py               # Bayesian VAR with Minnesota prior
 │   │   │   ├── scenario_tree.py      # Bayesian scenario tree
 │   │   │   └── causal_impact.py      # Bayesian causal impact analysis
 │   │   └── geopolitical/
-│   │       ├── __init__.py
 │   │       ├── conflict_model.py     # War escalation dynamics
 │   │       ├── supply_disruption.py  # Supply chain disruption model
 │   │       └── contagion.py          # Cross-market contagion model
 │   ├── scenarios/
-│   │   ├── __init__.py
-│   │   ├── scenario_engine.py        # Monte Carlo scenario generator
-│   │   ├── iran_war.py               # Iran war-specific scenario logic
-│   │   ├── strait_of_hormuz.py       # Hormuz chokepoint model
-│   │   └── historical_analogs.py     # Historical conflict analogs
+│   │   ├── scenario_engine.py        # Monte Carlo scenario generator (10K paths)
+│   │   ├── iran_war.py               # Iran war-specific scenario logic (864 lines)
+│   │   ├── strait_of_hormuz.py       # Hormuz chokepoint model (796 lines)
+│   │   └── historical_analogs.py     # Historical conflict analogs (637 lines)
 │   ├── alpha/
-│   │   ├── __init__.py
 │   │   ├── oil/
-│   │   │   ├── __init__.py
 │   │   │   ├── contango_signals.py   # Term structure / contango-backwardation
 │   │   │   ├── floating_storage.py   # Floating storage / tanker tracking
 │   │   │   ├── refinery_margins.py   # Crack spreads / refinery signals
@@ -123,7 +211,6 @@ IranBSE/
 │   │   │   ├── iran_export_tracking.py # Iran-specific export monitoring
 │   │   │   └── dark_fleet.py         # Sanctioned tanker "dark fleet" signals
 │   │   ├── wheat/
-│   │   │   ├── __init__.py
 │   │   │   ├── crop_conditions.py    # USDA crop condition reports
 │   │   │   ├── weather_models.py     # Weather anomaly signals
 │   │   │   ├── black_sea_risk.py     # Black Sea export disruption
@@ -131,46 +218,92 @@ IranBSE/
 │   │   │   ├── fob_basis.py          # FOB basis / export competitiveness
 │   │   │   └── food_security.py      # Food security panic buying signals
 │   │   └── cross_asset/
-│   │       ├── __init__.py
 │   │       ├── dollar_dynamics.py    # USD strength / petrodollar flows
 │   │       ├── volatility_surface.py # Vol surface / skew signals
 │   │       ├── cot_positioning.py    # CFTC Commitment of Traders
 │   │       ├── etf_flows.py          # Commodity ETF flow signals
 │   │       └── options_flow.py       # Unusual options activity
 │   ├── risk/
-│   │   ├── __init__.py
 │   │   ├── tail_risk.py              # Tail risk metrics (CVaR, ES)
 │   │   ├── stress_testing.py         # Historical + hypothetical stress tests
 │   │   └── model_risk.py             # Model uncertainty quantification
 │   ├── backtesting/
-│   │   ├── __init__.py
 │   │   ├── walk_forward.py           # Walk-forward validation
 │   │   ├── historical_conflicts.py   # Backtest on prior conflicts
 │   │   └── metrics.py                # Custom evaluation metrics
 │   └── visualization/
-│       ├── __init__.py
 │       ├── scenario_plots.py         # Scenario fan charts
 │       ├── sensitivity.py            # Sensitivity analysis plots
-│       └── dashboard.py              # Interactive dashboard
-├── notebooks/
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_feature_analysis.ipynb
-│   ├── 03_model_comparison.ipynb
-│   └── 04_scenario_analysis.ipynb
-├── tests/
-│   ├── __init__.py
-│   ├── test_data/
-│   ├── test_models/
-│   ├── test_scenarios/
-│   └── test_alpha/
+│       └── dashboard.py              # Interactive dashboard (604 lines)
+├── tests/                            # ~3,809 lines of tests
+│   ├── test_data/                    # Data fetcher tests
+│   ├── test_models/                  # Model registry and statistical tests
+│   ├── test_scenarios/               # Scenario engine and Hormuz tests
+│   └── test_alpha/                   # Alpha signal tests
 ├── scripts/
-│   ├── run_pipeline.py               # Main execution pipeline
-│   ├── fetch_data.py                 # Data download script
+│   ├── run_pipeline.py               # Main execution pipeline (737 lines, 6 stages)
+│   ├── wheat_forecast.py             # 1-month wheat forecast (717 lines, COMPLETED)
+│   ├── fetch_data.py                 # Data download script (1073 lines, 4 providers active)
 │   └── generate_report.py            # Generate analysis report
-├── requirements.txt
+├── output/
+│   └── wheat_forecast/               # First run results (2026-02-24)
+│       ├── wheat_forecast_results.json
+│       ├── wheat_forecast_report.txt
+│       ├── wheat_forecast_fan_chart.png
+│       ├── wheat_forecast_distribution.png
+│       └── wheat_historical_comparison.png
+├── requirements.txt                  # Includes lseg-data>=2.0
 ├── pyproject.toml
 └── Makefile
 ```
+
+---
+
+## Data Pipeline: fetch_data.py
+
+### Provider Dispatch Architecture
+
+`scripts/fetch_data.py` uses a dispatch table pattern. Each provider has a dedicated `_fetch_*` function:
+
+```python
+_PROVIDER_DISPATCH = {
+    "yfinance": _fetch_yfinance,   # Yahoo Finance — commodity futures, equity indices
+    "fred": _fetch_fred,           # FRED — macro indicators (API key hardcoded)
+    "eia_api": _fetch_eia,         # EIA v2 — petroleum data (API key hardcoded)
+    "lseg": _fetch_lseg,           # LSEG Data Library — options, curves, freight, news
+}
+```
+
+All other providers (acled, cftc, noaa, nasa_modis, usda_api, kpler) fall through to `_fetch_placeholder`.
+
+### Running the Pipeline
+
+```bash
+# Fetch all enabled sources
+python scripts/fetch_data.py
+
+# Fetch specific sources only
+python scripts/fetch_data.py --sources commodity_prices macro_indicators eia_petroleum
+
+# LSEG sources (requires Workspace Desktop running on same machine)
+export LSEG_APP_KEY="your-app-key-here"
+python scripts/fetch_data.py --sources lseg_futures_curve lseg_options lseg_freight lseg_news
+
+# Dry run (validate config only)
+python scripts/fetch_data.py --dry-run
+```
+
+### LSEG Session Notes
+
+- The fetcher writes `lseg-data.config.json` to the project root dynamically
+- Session opens once and is reused across all 4 LSEG sources
+- Session is cleaned up at the end of `main()`
+- If Workspace is not running, LSEG sources will fail gracefully with error status
+- For headless/server access, change `session_type: "platform"` in `data_sources.yaml` and get platform credentials from LSEG
+
+### Output Format
+
+All fetchers save to `data/raw/<source_name>.parquet` as Polars DataFrames with a `date` column and label-prefixed value columns.
 
 ---
 
@@ -248,80 +381,14 @@ IranBSE/
 
 ## Scenario Parameters: US-Iran War (March 15 – April 15, 2026)
 
-### Key Variables (Config-Driven)
-```yaml
-scenario:
-  name: "US-Iran War March 2026"
-  start_date: "2026-03-15"
-  end_date: "2026-04-15"
-  duration_days: 31
-
-  escalation_levels:
-    - level: 1
-      name: "Limited Strikes"
-      description: "Targeted strikes on nuclear/military facilities"
-      probability: 0.45
-      oil_supply_disruption_pct: [2, 8]      # % of global supply
-      hormuz_closure_probability: 0.15
-      wheat_trade_disruption_pct: [0, 3]
-
-    - level: 2
-      name: "Extended Air Campaign"
-      description: "Sustained air operations, Iranian retaliation"
-      probability: 0.35
-      oil_supply_disruption_pct: [8, 20]
-      hormuz_closure_probability: 0.55
-      wheat_trade_disruption_pct: [3, 10]
-
-    - level: 3
-      name: "Full Theater Conflict"
-      description: "Regional war with proxy involvement"
-      probability: 0.15
-      oil_supply_disruption_pct: [20, 40]
-      hormuz_closure_probability: 0.85
-      wheat_trade_disruption_pct: [10, 25]
-
-    - level: 4
-      name: "Global Escalation"
-      description: "Multi-party conflict, severe trade disruption"
-      probability: 0.05
-      oil_supply_disruption_pct: [40, 60]
-      hormuz_closure_probability: 0.95
-      wheat_trade_disruption_pct: [25, 50]
-
-  iran_specifics:
-    daily_oil_production_mbpd: 3.2           # JUSTIFIED: EIA 2025 estimate
-    hormuz_daily_flow_mbpd: 17.0             # JUSTIFIED: EIA Strait of Hormuz analysis
-    hormuz_pct_global_oil_trade: 0.20        # JUSTIFIED: ~20% of global oil trade
-    iran_wheat_import_dependency: 0.30       # JUSTIFIED: FAO food balance sheets
-    iran_strategic_oil_reserve_days: 15      # JUSTIFIED: estimated from storage capacity
-
-  historical_analogs:
-    - event: "Gulf War I (1990-91)"
-      oil_peak_pct_change: 140
-      wheat_peak_pct_change: 15
-      duration_to_peak_days: 60
-    - event: "Iraq War (2003)"
-      oil_peak_pct_change: 37
-      wheat_peak_pct_change: 8
-      duration_to_peak_days: 14
-    - event: "Libya Civil War (2011)"
-      oil_peak_pct_change: 25
-      wheat_peak_pct_change: 5
-      duration_to_peak_days: 45
-    - event: "Russia-Ukraine (2022)"
-      oil_peak_pct_change: 65
-      wheat_peak_pct_change: 70
-      duration_to_peak_days: 21
-    - event: "Iran-Iraq War Start (1980)"
-      oil_peak_pct_change: 110
-      wheat_peak_pct_change: 10
-      duration_to_peak_days: 90
-    - event: "Soleimani Strike (2020)"
-      oil_peak_pct_change: 4
-      wheat_peak_pct_change: 1
-      duration_to_peak_days: 1
-```
+See `config/scenarios.yaml` for full research-backed parameters including:
+- 4 escalation levels with calibrated probabilities and price ranges
+- Strait of Hormuz flow data (20 mb/d, 20% of global seaborne oil trade)
+- Iran military capabilities (post-June 2025 strikes)
+- Proxy network activity (Houthis, Hezbollah)
+- Mine-clearing timelines (8-26 weeks, 16 MCM vessels)
+- Insurance/shipping parameters
+- 6 historical conflict analogs with calibrated price impacts
 
 ---
 
@@ -364,25 +431,26 @@ Approximated via MCMC (NUTS sampler in PyMC/NumPyro) with informative priors fro
 
 ## Data Sources Priority List
 
-### Free / Open Source
-1. Yahoo Finance / yfinance — Historical futures prices
-2. FRED (Federal Reserve) — Macro indicators, rates
-3. USDA (WASDE, crop reports) — Wheat fundamentals
-4. EIA (Energy Information Admin) — Oil supply/demand/inventories
-5. ACLED (Armed Conflict Location) — Conflict event data
-6. GDELT (Global Event Database) — News-based geopolitical signals
-7. ERA5 / NOAA — Weather and climate data
-8. NASA MODIS / Sentinel — Satellite vegetation indices
-9. CFTC CoT — Positioning data
-10. World Bank / IMF — Macro/trade data
+### Active — Implemented & Configured
+1. **yfinance** — Daily futures OHLCV (CL=F, BZ=F, ZW=F, GC=F, NG=F, HG=F) + equity indices since 2000
+2. **FRED** — Fed funds, 10Y/2Y yields, DXY, breakeven inflation, oil spot, CPI (API key in fetch_data.py)
+3. **EIA API v2** — Weekly crude inventory, imports, refinery utilization, SPR stocks (API key in fetch_data.py)
+4. **LSEG Data Library** — Options chains (IV/Greeks), futures term structure, Baltic freight indices, news headlines (needs App Key + Workspace Desktop)
 
-### Premium (If Available)
-11. Refinitiv/LSEG — Tick data, fundamentals, estimates
-12. Bloomberg — Terminal data
-13. Kpler / Vortexa — Tanker tracking, oil flows
-14. Planet Labs — High-frequency satellite imagery
-15. Predata — Geopolitical risk signals
-16. Orbital Insight — Tank farm satellite analytics
+### Configured But Not Yet Fetching (placeholder providers)
+5. USDA (WASDE, crop reports) — Wheat fundamentals
+6. ACLED — Conflict event data
+7. CFTC CoT — Positioning data (use `cot_reports` package for free alternative)
+8. NOAA — Weather and climate data
+9. NASA MODIS — Satellite vegetation indices
+
+### Premium (Optional)
+10. Kpler / Vortexa — Tanker tracking, oil flows (`enabled: false` in yaml)
+
+### Free Supplements Not Yet Configured
+- Caldara-Iacoviello Geopolitical Risk Index (matteoiacoviello.com/gpr.htm)
+- GDELT — News-based geopolitical signals
+- Economic Policy Uncertainty Index (policyuncertainty.com)
 
 ---
 
@@ -390,13 +458,13 @@ Approximated via MCMC (NUTS sampler in PyMC/NumPyro) with informative priors fro
 
 ### When Starting Work
 1. **Read this entire claude.md first** — Every time
-2. **Check the TODO list** — Don't duplicate work
+2. **Check the Session Log above** — Don't redo completed work
 3. **Read the module README** — Before touching any module
 4. **Run existing tests** — Before AND after changes
 
 ### Code Standards
 - Python 3.10+ with full type annotations
-- `black` formatter, `ruff` linter, `mypy` strict mode
+- `black` formatter (100-char lines), `ruff` linter, `mypy` strict mode
 - Every function: Google docstring + `# JUSTIFIED:` for any numerical constant
 - Prefer `numpy` vectorized ops over loops
 - Use `polars` over `pandas` for large datasets (10x faster)
@@ -420,54 +488,34 @@ Approximated via MCMC (NUTS sampler in PyMC/NumPyro) with informative priors fro
 
 ```
 # Core
-numpy>=1.24
-scipy>=1.11
-polars>=0.20
-pydantic>=2.0
+numpy>=1.24, scipy>=1.11, polars>=0.20, pydantic>=2.0, pyyaml>=6.0
 
 # Statistical Models
-statsmodels>=0.14
-arch>=6.0               # GARCH family
-pymc>=5.10              # Bayesian inference
-numpyro>=0.13           # Fast Bayesian (JAX-based)
-arviz>=0.17             # Bayesian diagnostics
+statsmodels>=0.14, arch>=6.0, pymc>=5.10, numpyro>=0.13, arviz>=0.17
 
 # Machine Learning
-scikit-learn>=1.3
-xgboost>=2.0
-lightgbm>=4.0
-catboost>=1.2
+scikit-learn>=1.3, xgboost>=2.0, lightgbm>=4.0, catboost>=1.2
 
 # Deep Learning
-torch>=2.1
-pytorch-lightning>=2.1
+torch>=2.1, pytorch-lightning>=2.1
 
 # Time Series
-darts>=0.27             # Unified forecasting API
-gluonts>=0.14           # Probabilistic forecasting
-tslearn>=0.6            # Time series clustering
+darts>=0.27, tslearn>=0.6
 
 # Specialized
-tick>=0.7               # Hawkes processes
-copulas>=0.10           # Copula models
-tigramite>=5.2          # Causal discovery (PCMCI+)
-POT>=0.9                # Extreme Value Theory
+copulas>=0.10, tigramite>=5.2
 
 # Data
-yfinance>=0.2
-fredapi>=0.5
-requests>=2.31
+yfinance>=0.2, fredapi>=0.5, requests>=2.31, lseg-data>=2.0
 
 # Visualization
-plotly>=5.18
-matplotlib>=3.8
-seaborn>=0.13
+plotly>=5.18, matplotlib>=3.8, seaborn>=0.13
 
 # Infrastructure
-loguru>=0.7
-hydra-core>=1.3         # Config management
-mlflow>=2.9             # Experiment tracking
-joblib>=1.3             # Parallel execution
+loguru>=0.7, hydra-core>=1.3, mlflow>=2.9, joblib>=1.3
+
+# Testing
+pytest>=7.4, hypothesis>=6.88
 ```
 
 ---
@@ -480,6 +528,29 @@ joblib>=1.3             # Parallel execution
 - **Prediction interval coverage**: 90% PI should achieve 85-95% empirical coverage
 - **Scenario ranking**: Correct ordinal ranking of severity across escalation levels
 - **Cross-asset correlation shift**: Detect regime break within 2 days
+
+---
+
+## Outstanding Work
+
+### High Priority
+- [ ] Re-run wheat_forecast.py after bug fixes to get corrected results
+- [ ] Run fetch_data.py to populate `data/raw/` with yfinance + FRED + EIA data
+- [ ] Connect LSEG data feeds (needs Workspace Desktop running locally)
+- [ ] Implement CFTC CoT fetcher (use `cot_reports` package)
+- [ ] Wire fetched data into feature processors (technical, fundamental, regime)
+
+### Medium Priority
+- [ ] Implement model fitting (models created but no actual training on real data)
+- [ ] Full pipeline integration (run_pipeline.py stages are modular but need live data)
+- [ ] Walk-forward backtesting on historical conflict analogs
+- [ ] Interactive Plotly/Dash dashboard
+
+### Lower Priority
+- [ ] ACLED/GDELT geopolitical event fetcher
+- [ ] NOAA weather + NASA NDVI satellite data fetchers
+- [ ] USDA WASDE report parser
+- [ ] Caldara-Iacoviello GPR Index integration
 
 ---
 
@@ -498,7 +569,7 @@ joblib>=1.3             # Parallel execution
 
 ```bash
 # Setup
-make install          # Install dependencies
+make install          # Install dependencies (includes lseg-data)
 make fetch-data       # Download all data sources
 make validate-data    # Run data quality checks
 
@@ -506,6 +577,9 @@ make validate-data    # Run data quality checks
 make run-pipeline     # Full pipeline execution
 make run-scenarios    # Generate scenario analysis
 make run-backtest     # Backtest on historical conflicts
+
+# Wheat forecast (standalone)
+python scripts/wheat_forecast.py
 
 # Dev
 make test             # Run all tests
@@ -515,5 +589,5 @@ make format           # Auto-format code
 
 ---
 
-*Last updated: 2026-02-22*
+*Last updated: 2026-02-24*
 *Project codename: IranBSE (Black Swan Event)*
