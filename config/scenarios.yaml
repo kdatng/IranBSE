@@ -1,0 +1,161 @@
+# Scenario parameters updated with comprehensive defense research (Feb 2026)
+# Sources: CSIS, CRS, DIA, IAEA, IEA, Atlantic Council, Washington Institute
+
+scenario:
+  name: "US-Iran War March 2026"
+  start_date: "2026-03-15"
+  end_date: "2026-04-15"
+  duration_days: 31
+
+  escalation_levels:
+    - level: 1
+      name: "Limited Strikes"
+      description: "Targeted strikes on nuclear/military facilities (June 2025 analog)"
+      probability: 0.45
+      oil_supply_disruption_pct: [2, 8]
+      hormuz_closure_probability: 0.15
+      wheat_trade_disruption_pct: [0, 3]
+      oil_price_range_bbl: [80, 100]
+
+    - level: 2
+      name: "Extended Air Campaign"
+      description: "Sustained air operations with Iranian missile/mine retaliation"
+      probability: 0.35
+      oil_supply_disruption_pct: [8, 20]
+      hormuz_closure_probability: 0.55
+      wheat_trade_disruption_pct: [3, 10]
+      oil_price_range_bbl: [100, 150]
+
+    - level: 3
+      name: "Full Theater Conflict"
+      description: "Regional war with Houthi/Hezbollah proxy involvement"
+      probability: 0.15
+      oil_supply_disruption_pct: [20, 40]
+      hormuz_closure_probability: 0.85
+      wheat_trade_disruption_pct: [10, 25]
+      oil_price_range_bbl: [150, 250]
+
+    - level: 4
+      name: "Global Escalation"
+      description: "Multi-front conflict, full Hormuz closure, severe trade disruption"
+      probability: 0.05
+      oil_supply_disruption_pct: [40, 60]
+      hormuz_closure_probability: 0.95
+      wheat_trade_disruption_pct: [25, 50]
+      oil_price_range_bbl: [200, 300]
+
+  # --- RESEARCH-BACKED PARAMETERS ---
+
+  strait_of_hormuz:
+    daily_flow_mbpd: 20.0  # JUSTIFIED: IEA June 2025 factsheet (crude + products)
+    pct_global_oil_trade: 0.20  # JUSTIFIED: ~20% of global seaborne oil
+    pct_global_lng_trade: 0.22  # JUSTIFIED: IEA — 22% of global LNG transits Hormuz
+    bypass_pipeline_capacity_mbpd: 4.2  # JUSTIFIED: Petroline ~2.8-4.8 + ADCOP ~0.7 spare
+    bypass_coverage_pct: 0.21  # JUSTIFIED: 4.2/20 — only ~21% of flow can bypass
+
+    # Petroline (Saudi East-West)
+    petroline_design_mbpd: 7.0  # JUSTIFIED: Aramco claims 7 mb/d as of March 2025
+    petroline_spare_mbpd: [2.8, 4.8]  # JUSTIFIED: 7.0 - 2.2 current usage
+    # ADCOP (Abu Dhabi-Fujairah)
+    adcop_capacity_mbpd: 1.8  # JUSTIFIED: ADNOC pipeline capacity
+    adcop_spare_mbpd: 0.7  # JUSTIFIED: 1.8 - 1.1 current usage
+    # Countries with ZERO bypass: Iran, Kuwait, Qatar, Bahrain
+    # LNG has NO bypass option
+
+    mine_clearing_duration_weeks: [8, 26]  # JUSTIFIED: CENTCOM nominee Cooper "months"
+    mcm_vessels_needed: 16  # JUSTIFIED: Washington Institute analysis
+
+  iran_military:
+    # Anti-ship missiles (post-June 2025)
+    remaining_missiles: 1500  # JUSTIFIED: Israeli estimates post-June 2025 war
+    remaining_launchers: 200
+    asbm_range_km: 700  # JUSTIFIED: Zulfiqar Basir max range
+    ascm_range_km: 1000  # JUSTIFIED: Abu Mahdi AI-guided cruise missile
+    naval_defense_radius_km: 150  # JUSTIFIED: Sayyad-3G test from warship
+
+    # Naval mines
+    mine_inventory: [5000, 6000]  # JUSTIFIED: DIA 2019 "more than 5,000"; 2025 est ~6,000
+    mine_laying_rate_per_day: 100  # JUSTIFIED: Combined IRGC small boats + subs
+    mine_types: ["contact", "bottom", "rising_EM52", "acoustic", "pressure", "magnetic"]
+    kilo_submarines: 3  # JUSTIFIED: Each carries 20 mines, 300km range
+    ghadir_midget_subs: 20  # JUSTIFIED: 4 mines each via torpedo tubes
+    irgc_small_boats: "hundreds"  # JUSTIFIED: <25-30ft, rapid mine-laying
+
+    # Nuclear status (post-June 2025 strikes)
+    nuclear_facilities_damaged: ["Natanz", "Isfahan", "Fordow"]
+    enrichment_status: "significantly_set_back"  # JUSTIFIED: IAEA DG Grossi
+    pre_strike_breakout_time_days: [2, 7]  # JUSTIFIED: DIA May 2025 / ISIS analysis
+    iaea_compliance: false  # JUSTIFIED: June 2025 Board finding
+
+  proxy_capability:
+    houthi:
+      attacks_nov2023_oct2024: 190
+      vessels_hit: 130
+      red_sea_traffic_decline_pct: 70  # JUSTIFIED: Dec 2023-Apr 2024
+      suez_transit_decline_pct: 58  # JUSTIFIED: 2068 to 877 per month
+      bab_al_mandab_oil_drop_mbpd: [8.8, 4.0]  # From/to
+      trade_disrupted_usd: "1_trillion"  # JUSTIFIED: Russell Group estimate
+      weapons: ["asbm_easif", "asbm_tankil", "cruise_missiles", "drones", "naval_mines"]
+
+    hezbollah:
+      arsenal_degradation_pct: 25  # JUSTIFIED: Post-Operation Northern Arrows 2024
+      residual_threat: "strategic_sites_and_population_centers"
+
+  insurance_shipping:
+    war_risk_premium_baseline_pct: 0.07  # JUSTIFIED: Pre-Oct 2023 baseline
+    war_risk_premium_peak_pct: 1.0  # JUSTIFIED: Red Sea peak mid-2024
+    premium_per_100m_vessel_usd: 1000000  # JUSTIFIED: 1% of $100M hull value
+    freight_rate_surge_pct: 30  # JUSTIFIED: Red Sea rerouting impact
+    cape_of_good_hope_extra_days: [10, 14]  # JUSTIFIED: Rerouting around Africa
+    recovery_timeline: "quarters_not_weeks"  # JUSTIFIED: Insurance industry assessment
+    # Key insight: credible threat alone triggers insurance withdrawal
+
+  us_mcm_capability:
+    avenger_class_status: "decommissioned"  # JUSTIFIED: All 4 left Bahrain by Jan 2025
+    replacement: "LCS_with_MCM_mission_package"  # USS Canberra, USS Santa Barbara
+    mh60s_almds: true  # Airborne laser mine detection
+    mh53e_remaining: 28  # JUSTIFIED: maintenance-heavy, aging fleet
+    allied_mcm:
+      saudi_sandown_class: 3
+      uae_frankenthal_class: 2
+
+  historical_analogs:
+    - event: "Gulf War I (1990-91)"
+      oil_peak_pct_change: 140
+      wheat_peak_pct_change: 15
+      duration_to_peak_days: 60
+    - event: "Iraq War (2003)"
+      oil_peak_pct_change: 37
+      wheat_peak_pct_change: 8
+      duration_to_peak_days: 14
+    - event: "Libya Civil War (2011)"
+      oil_peak_pct_change: 25
+      wheat_peak_pct_change: 5
+      duration_to_peak_days: 45
+    - event: "Russia-Ukraine (2022)"
+      oil_peak_pct_change: 65
+      wheat_peak_pct_change: 70
+      duration_to_peak_days: 21
+    - event: "Iran-Iraq War Start (1980)"
+      oil_peak_pct_change: 110
+      wheat_peak_pct_change: 10
+      duration_to_peak_days: 90
+    - event: "Soleimani Strike (2020)"
+      oil_peak_pct_change: 4
+      wheat_peak_pct_change: 1
+      duration_to_peak_days: 1
+    - event: "Houthi Red Sea Campaign (2023-2025)"
+      oil_peak_pct_change: 12
+      wheat_peak_pct_change: 3
+      duration_to_peak_days: 90
+      suez_traffic_drop_pct: 58
+    - event: "Operation Praying Mantis (1988)"
+      oil_peak_pct_change: 5
+      wheat_peak_pct_change: 1
+      duration_to_peak_days: 3
+      context: "USS Roberts hit mine; US destroyed half Iran navy in hours"
+    - event: "June 2025 Israel-Iran War"
+      oil_peak_pct_change: 18
+      wheat_peak_pct_change: 5
+      duration_to_peak_days: 7
+      context: "Iran loaded mines but did not deploy; nuclear facilities struck"

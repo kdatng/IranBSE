@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-02-24T03:03:06.569122",
+  "base_price": 576.75,
+  "forecast_horizon_days": 22,
+  "n_paths": 10000,
+  "war_scenario": {
+    "scenario": "war",
+    "point_forecast": 810.7909585798852,
+    "median_forecast": 809.6269729677389,
+    "std": 155.84145552827817,
+    "percentiles": {
+      "1": 522.6640248201616,
+      "5": 574.519600252435,
+      "10": 608.3191092201289,
+      "25": 678.2311227276493,
+      "50": 809.6269729677389,
+      "75": 934.2389038388433,
+      "90": 1014.839134282338,
+      "95": 1059.3313876232821,
+      "99": 1144.0483831463755
+    },
+    "pct_change_mean": 40.57927326916085,
+    "pct_change_median": 40.377455217640026,
+    "latest_price": 576.75,
+    "horizon_days": 22,
+    "n_paths": 10000
+  },
+  "nowar_scenario": {
+    "scenario": "no_war",
+    "point_forecast": 577.4383752333079,
+    "median_forecast": 575.4731407515073,
+    "std": 51.154909525848716,
+    "percentiles": {
+      "1": 458.80071753828105,
+      "5": 497.79826524356577,
+      "10": 516.5609495195623,
+      "25": 544.1140669603113,
+      "50": 575.4731407515073,
+      "75": 608.3557860228495,
+      "90": 641.8682305425154,
+      "95": 662.9006000492842,
+      "99": 713.3799430468472
+    },
+    "pct_change_mean": 0.1193541800273692,
+    "pct_change_median": -0.2213886863446304,
+    "latest_price": 576.75,
+    "horizon_days": 22,
+    "n_paths": 10000
+  },
+  "charts": [
+    "/home/user/IranBSE/output/wheat_forecast/wheat_forecast_fan_chart.png",
+    "/home/user/IranBSE/output/wheat_forecast/wheat_forecast_distribution.png",
+    "/home/user/IranBSE/output/wheat_forecast/wheat_historical_comparison.png"
+  ]
+}

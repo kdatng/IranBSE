@@ -1,0 +1,46 @@
+project:
+  name: "IranBSE"
+  version: "0.1.0"
+  description: "Black Swan Event Modeling: US-Iran War Impact on Commodity Futures"
+
+pipeline:
+  seed: 42
+  n_monte_carlo: 10000
+  confidence_levels: [0.90, 0.95, 0.99]
+  forecast_horizon_days: 60
+  warmup_days: 252  # JUSTIFIED: 1 trading year for calibration
+
+targets:
+  oil:
+    symbols: ["CL=F", "BZ=F"]
+    names: ["WTI Crude", "Brent Crude"]
+    base_currency: "USD"
+    contract_unit: "barrels"
+  wheat:
+    symbols: ["ZW=F"]
+    names: ["CBOT Wheat"]
+    base_currency: "USD"
+    contract_unit: "bushels"
+
+models:
+  enabled:
+    statistical: ["regime_switching", "extreme_value", "garch_family", "copula", "var_svar"]
+    ml: ["gradient_boost", "temporal_fusion"]
+    bayesian: ["bvar", "scenario_tree", "causal_impact"]
+    geopolitical: ["conflict_model", "supply_disruption", "contagion"]
+  ensemble:
+    method: "stacking"
+    meta_learner: "ridge"
+    use_adversarial_validation: true
+    use_bayesian_model_averaging: true
+
+training:
+  train_start: "2000-01-01"
+  train_end: "2025-12-31"
+  validation_split: 0.2
+  walk_forward_windows: 5
+
+logging:
+  level: "DEBUG"
+  file: "logs/iranbse.log"
+  rotation: "10 MB"
